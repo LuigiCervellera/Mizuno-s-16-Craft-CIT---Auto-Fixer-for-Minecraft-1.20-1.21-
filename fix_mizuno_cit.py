@@ -1,16 +1,17 @@
 """
 ===========================================================
-  Mizuno 16 Craft CIT - Auto-Fixer for Minecraft 1.20 / 1.21+
+  Mizuno 16 Craft CIT - Auto-Fixer per Minecraft 1.20 / 1.21+
 ===========================================================
-This script automatically fixes CIT model rotations when using
-modern mods such as Iris, CIT Resewn, or EMF.
+Questo script corregge automaticamente la rotazione dei modelli CIT
+e risolve il problema dei modelli invisibili (trapdoor, cartelli,
+quadri, fiori, ecc.) quando si usano Iris, CIT Resewn o EMF.
 
-How to use:
-1. Place this script inside the extracted resource pack folder
-   (where you can see 'assets', 'pack.mcmeta', etc.).
-2. Double-click this file or run it with:
+Come usarlo:
+1. Metti questo script dentro la cartella estratta del resource pack
+   (dove vedi le cartelle 'assets', 'pack.mcmeta', ecc.).
+2. Fai doppio clic su questo file oppure eseguilo con:
    python fix_mizuno_cit.py
-3. You will find a ready-to-use zip file for Minecraft named:
+3. Troverai un file zip pronto per Minecraft chiamato:
    Mizuno_CIT_Fixed.zip
 ===========================================================
 """
@@ -21,25 +22,27 @@ import shutil
 import zipfile
 
 def main():
-    print("--- Mizuno CIT Auto-Fixer ---")
+    print("==============================================")
+    print("   Mizuno 16 Craft CIT - Full Auto-Fixer")
+    print("==============================================")
     current_dir = os.path.dirname(os.path.abspath(__file__))
     assets_dir = os.path.join(current_dir, "assets")
 
     if not os.path.exists(assets_dir):
-        print("\n[ERROR] 'assets' folder not found!")
-        print("Make sure to place this file inside the resource pack folder.")
-        input("\nPress ENTER to exit...")
+        print("\n[ERRORE] Cartella 'assets' non trovata!")
+        print("Assicurati di mettere questo file dentro la cartella del resource pack.")
+        input("\nPremi INVIO per uscire...")
         return
 
-    print("\n[1/3] Creating safety backup...")
-    backup_dir = os.path.join(current_dir, "_backup_original")
+    print("\n[1/3] Creazione backup di sicurezza...")
+    backup_dir = os.path.join(current_dir, "_backup_originale")
     if not os.path.exists(backup_dir):
         shutil.copytree(assets_dir, os.path.join(backup_dir, "assets"))
-        print(" -> Backup saved to '_backup_original'")
+        print(" -> Backup salvato in '_backup_originale'")
     else:
-        print(" -> Backup already exists, proceeding...")
+        print(" -> Backup gia' presente, procedo...")
 
-    print("\n[2/3] Automatically fixing models...")
+    print("\n[2/3] Correzione automatica di modelli, geometrie e rotazioni...")
     models = {}
     name_to_path = {}
 
@@ -57,7 +60,7 @@ def main():
                 except Exception:
                     pass
 
-    # Update cit_item template if present
+    # Aggiorna il template cit_item se presente
     cit_item_path = name_to_path.get("cit_item")
     if cit_item_path and cit_item_path in models:
         disp = models[cit_item_path].setdefault("display", {})
@@ -67,7 +70,7 @@ def main():
             "scale": [2, 2, 2]
         }
 
-    def get_inherited_display(p, visited=None):
+    def resolve_model_complete(p, visited=None):
         if visited is None:
             visited = set()
         if p in visited:
@@ -75,44 +78,82 @@ def main():
         visited.add(p)
         d = models.get(p, {})
         parent_ref = d.get("parent")
-        res_display = {}
+
+        parent_data = {}
         if parent_ref:
             clean_name = parent_ref.replace("./", "").split("/")[-1]
             par_path = name_to_path.get(clean_name)
             if par_path:
-                res_display = get_inherited_display(par_path, visited)
+                parent_data = resolve_model_complete(par_path, visited)
+
+        # 1. Texture merging & dereferencing
+        merged_textures = dict(parent_data.get("textures", {}))
+        if "textures" in d and isinstance(d["textures"], dict):
+            merged_textures.update(d["textures"])
+
+        for k in list(merged_textures.keys()):
+            val = merged_textures[k]
+            loop_guard = 0
+            while isinstance(val, str) and val.startswith("#") and loop_guard < 10:
+                var_name = val[1:]
+                if var_name in merged_textures:
+                    val = merged_textures[var_name]
+                else:
+                    break
+                loop_guard += 1
+            merged_textures[k] = val
+
+        # 2. Inherit elements (geometria 3D)
+        elements = d.get("elements") or parent_data.get("elements")
+
+        # 3. Inherit display
+        merged_display = dict(parent_data.get("display", {}))
         if "display" in d and isinstance(d["display"], dict):
             for k, v in d["display"].items():
                 if isinstance(v, dict):
-                    res_display[k] = dict(v)
+                    merged_display[k] = dict(v)
                 else:
-                    res_display[k] = v
-        return res_display
+                    merged_display[k] = v
+
+        return {
+            "textures": merged_textures,
+            "elements": elements,
+            "display": merged_display
+        }
 
     count = 0
     for p, d in models.items():
         if p.endswith("wall_torch.json"):
             continue
-        inherited_disp = get_inherited_display(p)
-        if not inherited_disp:
-            continue
 
-        if os.path.basename(p) == "cauldron_6.json" and "fixed" in inherited_disp:
-            inherited_disp["fixed"]["rotation"] = [-90, 0, 0]
-            inherited_disp["fixed"]["translation"] = [0, 0, -15]
+        resolved = resolve_model_complete(p)
 
-        d["display"] = inherited_disp
+        # Se il modello e' un derivato senza elementi, incorpora la geometria del genitore
+        if "elements" not in d and resolved["elements"] is not None:
+            d["elements"] = resolved["elements"]
+
+        # Texture risolte
+        if resolved["textures"]:
+            d["textures"] = resolved["textures"]
+
+        # Display risolto
+        if resolved["display"]:
+            if os.path.basename(p) == "cauldron_6.json" and "fixed" in resolved["display"]:
+                resolved["display"]["fixed"]["rotation"] = [-90, 0, 0]
+                resolved["display"]["fixed"]["translation"] = [0, 0, -15]
+            d["display"] = resolved["display"]
+
         with open(p, "w", encoding="utf-8") as fh:
             json.dump(d, fh, indent="\t")
         count += 1
 
-    print(f" -> Successfully fixed {count} models!")
+    print(f" -> Elaborati e corretti con successo {count} modelli!")
 
-    print("\n[3/3] Building ZIP package...")
+    print("\n[3/3] Compilazione pacchetto ZIP...")
     zip_path = os.path.join(current_dir, "Mizuno_CIT_Fixed.zip")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(current_dir):
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("_backup_original", "_backup_originale")]
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "_backup_originale"]
             for f in files:
                 if f.startswith(".") or f == "Mizuno_CIT_Fixed.zip" or f.endswith(".py"):
                     continue
@@ -120,9 +161,9 @@ def main():
                 rel_path = os.path.relpath(full_path, current_dir)
                 zipf.write(full_path, rel_path)
 
-    print(f"\n[DONE] The package is ready:\n{zip_path}")
-    print("Just copy this zip file to Minecraft's 'resourcepacks' folder!")
-    input("\nPress ENTER to close...")
+    print(f"\n[COMPLETATO] Il pacchetto pronto e':\n{zip_path}")
+    print("Ti basta copiare questo file zip nella cartella 'resourcepacks' di Minecraft!")
+    input("\nPremi INVIO per chiudere...")
 
 if __name__ == "__main__":
     main()
