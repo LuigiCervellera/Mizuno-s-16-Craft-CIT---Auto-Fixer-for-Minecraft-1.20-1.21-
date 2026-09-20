@@ -26,7 +26,7 @@ This script safely parses all **1,014 model files** in the pack:
   *(Make sure to check **"Add Python to PATH"** during installation).*
 
 ### Step-by-step
-1. Download the official **Mizuno's 16 Craft CIT** pack from [Mizuno's Official Website](https://mizunomcmemo.blogspot.com/p/mizunos-16-craft-cit.html).
+1. Download the official **Mizuno's 16 Craft CIT** pack
 2. Unzip / extract the resource pack into a folder.
 3. Download [`fix_mizuno_cit.py`](./fix_mizuno_cit.py) from this repository and place it inside the extracted pack folder (where the `assets` folder and `pack.mcmeta` are located).
 4. **Double-click `fix_mizuno_cit.py`** (or open a terminal and run `python fix_mizuno_cit.py`).
